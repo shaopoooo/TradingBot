@@ -1,112 +1,89 @@
 const BinanceClient = require('../src/api/BinanceClient');
-const assert = require('assert');
+const nock = require('nock');
 const logger = require('../src/utils/Logger');
 
-async function runMockTest() {
-    console.log('--- RUNNING MOCK TEST ---');
-    // Mock specific methods to avoid real API calls
-    const mockClient = new BinanceClient();
+// Configuration
+const BASE_URL = 'https://api.binance.com';
 
-    // Overwrite the privateGet method to simulate API response
-    mockClient.privateGet = async (endpoint) => {
-        console.log(`[MOCK] Calling ${endpoint}`);
-        if (endpoint === '/api/v3/account') {
-            return {
-                makerCommission: 15,
-                takerCommission: 15,
-                buyerCommission: 0,
-                sellerCommission: 0,
-                commissionRates: { maker: '0.00150000', taker: '0.00150000', buyer: '0.00000000', seller: '0.00000000' },
-                canTrade: true,
-                canWithdraw: true,
-                canDeposit: true,
-                brokered: false,
-                requireSelfTradePrevention: false,
-                updateTime: 123456789,
-                accountType: 'SPOT',
-                balances: [
-                    { asset: 'BTC', free: '0.00100000', locked: '0.00000000' },
-                    { asset: 'LTC', free: '0.00000000', locked: '0.00000000' },
-                    { asset: 'ETH', free: '0.00000000', locked: '0.10000000' },
-                    { asset: 'USDT', free: '100.00000000', locked: '50.00000000' }
-                ],
-                permissions: ['SPOT']
-            };
-        }
-        throw new Error('Unknown endpoint mock');
-    };
+describe('BinanceClient', () => {
+    let client;
 
-    try {
-        // Test getBalances filtering logic
-        const balances = await mockClient.getBalances();
+    beforeAll(() => {
+        // Create client instance (API key from env or mock)
+        process.env.BINANCE_API_KEY = 'test_key';
+        process.env.BINANCE_API_SECRET = 'test_secret';
+        client = new BinanceClient(BASE_URL);
+    });
 
-        // Assertions
-        assert.strictEqual(balances.length, 3, 'Should verify only non-zero balances are returned (BTC, ETH, USDT)');
+    afterEach(() => {
+        nock.cleanAll();
+    });
 
-        const btc = balances.find(b => b.asset === 'BTC');
-        assert.ok(btc, 'BTC should be present');
-        assert.strictEqual(btc.free, '0.00100000');
+    test('Should filter zero balances correctly', async () => {
+        // Mock response
+        const mockResponse = {
+            balances: [
+                { asset: 'BTC', free: '0.00100000', locked: '0.00000000' },
+                { asset: 'LTC', free: '0.00000000', locked: '0.00000000' },
+                { asset: 'ETH', free: '0.00000000', locked: '0.10000000' },
+                { asset: 'USDT', free: '100.00000000', locked: '50.00000000' }
+            ]
+        };
 
-        const ltc = balances.find(b => b.asset === 'LTC');
-        assert.strictEqual(ltc, undefined, 'LTC (zero balance) should be filtered out');
+        // Setup Nock
+        nock(BASE_URL)
+            .get('/api/v3/account')
+            .query(true) // match all query params (timestamp, signature)
+            .reply(200, mockResponse);
 
-        console.log('PASS: Balance filtering logic');
-        console.log('MOCK TEST SUCCESS');
-
-    } catch (err) {
-        console.error('MOCK TEST FAILED');
-        console.error(err);
-        process.exit(1);
-    }
-}
-
-async function runLiveTest() {
-    console.log('\n--- RUNNING LIVE TEST (Real API) ---');
-    console.log('Reading credentials from .env...');
-
-    // Check if keys are present (basic check)
-    if (!process.env.BINANCE_API_KEY || process.env.BINANCE_API_KEY.includes('your_api_key')) {
-        console.error('SKIP: BINANCE_API_KEY is missing or default in .env');
-        return;
-    }
-
-    const client = new BinanceClient();
-
-    try {
-        console.log('Connecting to Binance API...');
         const balances = await client.getBalances();
 
-        console.log('SUCCESS! Real Connection Established.');
-        console.log('Account Overview (Non-zero balances):');
-        if (balances.length === 0) {
-            console.log('(No assets with balance > 0 found)');
-        } else {
-            console.table(balances);
-        }
-        console.log('LIVE TEST SUCCESS');
+        expect(balances).toHaveLength(3);
+        const assets = balances.map(b => b.asset);
+        expect(assets).toContain('BTC');
+        expect(assets).toContain('ETH');
+        expect(assets).toContain('USDT');
+        expect(assets).not.toContain('LTC');
+    });
 
-    } catch (error) {
-        console.error('LIVE TEST FAILED');
-        console.error('Please check your API Key, Secret, and Network/IP permissions.');
-        if (error.response) {
-            console.error(`Status: ${error.response.status}`);
-            console.error(`Data: ${JSON.stringify(error.response.data)}`);
-        } else {
-            console.error(`Error: ${error.message}`);
-        }
-        process.exit(1);
-    }
-}
+    test('Should handle API errors gracefully', async () => {
+        nock(BASE_URL)
+            .get('/api/v3/account')
+            .query(true)
+            .reply(401, { code: -2015, msg: 'Invalid API-key, IP, or permissions for action.' });
 
-// Main Execution
-(async () => {
-    // Always run mock test
-    await runMockTest();
+        await expect(client.getBalances()).rejects.toThrow();
+    });
 
-    // Run live test only if flag is present
-    if (process.argv.includes('--live')) {
-        await runLiveTest();
-    } else {
-        console.log('\n[INFO] Skipping live test. Use --live to run real API verification.');
-    }
-})();
+    /**
+     * Live API Verification
+     * Run with: npm run test:live
+     * or jest -t "Real API Verification"
+     */
+    describe('Real API Verification', () => {
+        // Skip if not explicitly requested or if keys are missing
+        const runLive = process.argv.includes('--live') || process.env.RUN_LIVE_TEST === 'true';
+
+        // Dynamic skip
+        (runLive ? test : test.skip)('Should connect to real Binance API', async () => {
+            console.log('Connecting to Real Binance API...');
+
+            // Re-instantiate to ensure we pick up real env vars if changed
+            const liveClient = new BinanceClient();
+
+            if (!process.env.BINANCE_API_KEY || process.env.BINANCE_API_KEY === 'test_key') {
+                console.warn('Skipping live test: Invalid or Missing API Key in .env');
+                return;
+            }
+
+            try {
+                const balances = await liveClient.getBalances();
+                console.log('Live Connection Success. Balances:', balances.length);
+                expect(Array.isArray(balances)).toBe(true);
+            } catch (error) {
+                console.error('Live Connection Failed:', error.message);
+                throw error;
+            }
+        });
+    });
+});
