@@ -1,0 +1,14 @@
+node_modules
+.env
+logs
+dist
+coverage
+.git
+.DS_Store
+.vscode
+.idea
+Dockerfile
+docker-compose.yml
+README.md
+PROJECT_RULES.md
+tests
