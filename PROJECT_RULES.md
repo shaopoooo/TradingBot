@@ -3,11 +3,11 @@
 ## 1. 專案狀態 (Project Status)
 > [!IMPORTANT]
 > Gemini 必須在每次 [/finish] 指令後更新此區塊。
-- **目前階段**: 專案啟動與環境建置 (Phase 1: Infrastructure)
-- **當前任務**: 執行 Step 1-3 基礎環境、工具建置與 Jest 測試環境初始化
+- **目前階段**: 第二階段：數據與進階策略 (Phase 2: Market & Strategy)
+- **當前任務**: 準備執行 Step 6: 市場規則解析 (Market Rules Parsing)
 - **待辦清單**:
   - [x] 建立完整 PROJECT_RULE.md (包含 20 階段微步驟)
-  - [ ] Step 1-5: 基礎建設與 API 通訊
+  - [x] Step 1-5: 基礎建設與 API 通訊
   - [ ] Step 6-12: 市場數據與進階策略 (參考 Backpack-MM 演化)
   - [ ] Step 13-17: 緒控引擎與交易執行 (Worker Threads)
   - [ ] Step 18-20: 容器化部署與 React 儀表板
